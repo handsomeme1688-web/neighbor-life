@@ -73,6 +73,18 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         if (result == 2L) {
             return Result.fail("不能重复下单");
         }
+        if (result == 3L) {
+            return Result.fail("秒杀尚未开始");
+        }
+        if (result == 4L) {
+            return Result.fail("秒杀已经结束");
+        }
+        if (result == 5L) {
+            return Result.fail("秒杀信息未初始化");
+        }
+        if (result != 0L) {
+            return Result.fail("秒杀服务暂不可用");
+        }
         return Result.ok(orderId);
     }
 

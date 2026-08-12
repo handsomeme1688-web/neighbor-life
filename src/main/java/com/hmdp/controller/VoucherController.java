@@ -7,6 +7,9 @@ import com.hmdp.service.IVoucherService;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import javax.validation.Valid;
+import javax.validation.constraints.Positive;
+import org.springframework.validation.annotation.Validated;
 
 /**
  * <p>
@@ -18,6 +21,7 @@ import javax.annotation.Resource;
  */
 @RestController
 @RequestMapping("/voucher")
+@Validated
 public class VoucherController {
 
     @Resource
@@ -40,7 +44,7 @@ public class VoucherController {
      * @return 优惠券id
      */
     @PostMapping("seckill")
-    public Result addSeckillVoucher(@RequestBody Voucher voucher) {
+    public Result addSeckillVoucher(@Valid @RequestBody Voucher voucher) {
         voucherService.addSeckillVoucher(voucher);
         return Result.ok(voucher.getId());
     }
@@ -51,7 +55,8 @@ public class VoucherController {
      * @return 优惠券列表
      */
     @GetMapping("/list/{shopId}")
-    public Result queryVoucherOfShop(@PathVariable("shopId") Long shopId) {
+    public Result queryVoucherOfShop(
+            @PathVariable("shopId") @Positive(message = "店铺编号必须大于0") Long shopId) {
        return voucherService.queryVoucherOfShop(shopId);
     }
 }

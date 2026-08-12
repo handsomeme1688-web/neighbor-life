@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
+import javax.validation.constraints.Positive;
+import org.springframework.validation.annotation.Validated;
 
 /**
  * <p>
@@ -22,6 +24,7 @@ import javax.annotation.Resource;
  */
 @RestController
 @RequestMapping("/voucher-order")
+@Validated
 public class VoucherOrderController {
 
     @Resource
@@ -32,13 +35,15 @@ public class VoucherOrderController {
     @SlidingWindowRateLimit(
             key = "voucher-order:seckill", windowSeconds = 1,
             globalLimit = 500, ipLimit = 50, userLimit = 10)
-    public Result seckillVoucher(@PathVariable("id") Long voucherId) {
+    public Result seckillVoucher(
+            @PathVariable("id") @Positive(message = "优惠券编号必须大于0") Long voucherId) {
 
         return voucherOrderService.seckillVoucher(voucherId);
     }
 
     @GetMapping("/{id}")
-    public Result queryOrder(@PathVariable("id") Long orderId) {
+    public Result queryOrder(
+            @PathVariable("id") @Positive(message = "订单编号必须大于0") Long orderId) {
         return voucherOrderService.queryOrder(orderId);
     }
 
@@ -47,7 +52,8 @@ public class VoucherOrderController {
      * does not connect to a real payment provider.
      */
     @PostMapping("/{id}/pay")
-    public Result payOrder(@PathVariable("id") Long orderId) {
+    public Result payOrder(
+            @PathVariable("id") @Positive(message = "订单编号必须大于0") Long orderId) {
         return voucherOrderService.payOrder(orderId);
     }
 }

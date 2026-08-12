@@ -10,6 +10,8 @@ import lombok.experimental.Accessors;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Positive;
 
 /**
  * <p>
@@ -76,18 +78,22 @@ public class Voucher implements Serializable {
      * 库存
      */
     @TableField(exist = false)
+    @NotNull(message = "秒杀库存不能为空")
+    @Positive(message = "秒杀库存必须大于0")
     private Integer stock;
 
     /**
      * 生效时间
      */
     @TableField(exist = false)
+    @NotNull(message = "活动开始时间不能为空")
     private LocalDateTime beginTime;
 
     /**
      * 失效时间
      */
     @TableField(exist = false)
+    @NotNull(message = "活动结束时间不能为空")
     private LocalDateTime endTime;
 
     /**

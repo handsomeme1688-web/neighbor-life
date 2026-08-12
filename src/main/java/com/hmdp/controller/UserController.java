@@ -12,8 +12,11 @@ import com.hmdp.service.IUserService;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
+import javax.validation.Valid;
+import javax.validation.constraints.Pattern;
 import javax.servlet.http.HttpSession;
 
 /**
@@ -27,6 +30,7 @@ import javax.servlet.http.HttpSession;
 @Slf4j
 @RestController
 @RequestMapping("/user")
+@Validated
 public class UserController {
 
     @Resource
@@ -39,7 +43,10 @@ public class UserController {
      * 发送手机验证码
      */
     @PostMapping("code")
-    public Result sendCode(@RequestParam("phone") String phone, HttpSession session) {
+    public Result sendCode(
+            @RequestParam("phone")
+            @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确") String phone,
+            HttpSession session) {
         // 发送短信验证码并保存验证码
         // 业务层的实现放到service层
         return userService.sendCode(phone, session); // 需要把验证码保存在session中
@@ -50,7 +57,7 @@ public class UserController {
      * @param loginForm 登录参数，包含手机号、验证码；或者手机号、密码
      */
     @PostMapping("/login") // json到后台要接收，就使用这个注解@RequestBody
-    public Result login(@RequestBody LoginFormDTO loginForm, HttpSession session){
+    public Result login(@Valid @RequestBody LoginFormDTO loginForm, HttpSession session){
         // 实现登录功能
         return userService.login(loginForm, session);
     }

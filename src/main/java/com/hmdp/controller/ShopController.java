@@ -10,6 +10,10 @@ import com.hmdp.utils.SystemConstants;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import javax.validation.Valid;
+import javax.validation.constraints.Min;
+import javax.validation.constraints.Positive;
+import org.springframework.validation.annotation.Validated;
 
 /**
  * <p>
@@ -21,6 +25,7 @@ import javax.annotation.Resource;
  */
 @RestController
 @RequestMapping("/shop")
+@Validated
 public class ShopController {
 
     @Resource
@@ -32,7 +37,8 @@ public class ShopController {
      * @return 商铺详情数据
      */
     @GetMapping("/{id}")
-    public Result queryShopById(@PathVariable("id") Long id) {
+    public Result queryShopById(
+            @PathVariable("id") @Positive(message = "店铺编号必须大于0") Long id) {
         return shopService.queryById(id);
     }
 
@@ -55,7 +61,7 @@ public class ShopController {
      * @return 无
      */
     @PutMapping
-    public Result updateShop(@RequestBody Shop shop) {
+    public Result updateShop(@Valid @RequestBody Shop shop) {
         // 写入数据库
 
         return shopService.update(shop);
@@ -69,8 +75,8 @@ public class ShopController {
      */
     @GetMapping("/of/type")
     public Result queryShopByType(
-            @RequestParam("typeId") Integer typeId,
-            @RequestParam(value = "current", defaultValue = "1") Integer current,
+            @RequestParam("typeId") @Positive(message = "店铺类型必须大于0") Integer typeId,
+            @RequestParam(value = "current", defaultValue = "1") @Min(value = 1, message = "页码必须大于0") Integer current,
             @RequestParam(value = "x", required = false)Double x,
             @RequestParam(value = "y", required = false)Double y
     ) {

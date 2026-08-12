@@ -44,7 +44,10 @@ logging:
   level:
     com.hmdp: debug
 app:
+  instance-id: ${APP_INSTANCE_ID:1}
   kafka:
     voucher-order-topic: hmdp.voucher-order.created
     voucher-order-dlt-topic: hmdp.voucher-order.created.DLT
     send-timeout-seconds: 5
+    retry-interval-ms: 1000
+    retry-count: 2

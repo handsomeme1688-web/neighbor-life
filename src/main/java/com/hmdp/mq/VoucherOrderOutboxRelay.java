@@ -7,9 +7,9 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
+import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
-import org.springframework.data.redis.connection.stream.StringRecord;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
@@ -17,11 +17,10 @@ import org.springframework.stereotype.Component;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import javax.annotation.Resource;
-import java.lang.management.ManagementFactory;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -51,7 +50,8 @@ public class VoucherOrderOutboxRelay {
     @Value("${app.kafka.send-timeout-seconds:5}")
     private long sendTimeoutSeconds;
 
-    private final String consumerName = "relay-" + runtimeId() + "-" + UUID.randomUUID().toString().substring(0, 8);
+    @Value("relay-${app.instance-id:1}")
+    private String consumerName;
     private final ExecutorService relayExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "voucher-order-kafka-relay");
         thread.setDaemon(true);
@@ -72,11 +72,22 @@ public class VoucherOrderOutboxRelay {
     }
 
     private void createConsumerGroupIfNecessary() {
+        RecordId bootstrapId = null;
         try {
+            // XGROUP cannot create a group for a missing stream in this Spring
+            // Data version, so create and immediately remove a bootstrap event.
+            if (Boolean.FALSE.equals(stringRedisTemplate.hasKey(STREAM))) {
+                bootstrapId = stringRedisTemplate.opsForStream()
+                        .add(STREAM, Collections.singletonMap("_bootstrap", "1"));
+            }
             stringRedisTemplate.opsForStream().createGroup(STREAM, ReadOffset.from("0-0"), GROUP);
         } catch (DataAccessException e) {
             if (e.getMessage() == null || !e.getMessage().contains("BUSYGROUP")) {
                 throw e;
+            }
+        } finally {
+            if (bootstrapId != null) {
+                stringRedisTemplate.opsForStream().delete(STREAM, bootstrapId);
             }
         }
     }
@@ -151,8 +162,4 @@ public class VoucherOrderOutboxRelay {
         }
     }
 
-    private static String runtimeId() {
-        String runtimeName = ManagementFactory.getRuntimeMXBean().getName();
-        return runtimeName.replaceAll("[^a-zA-Z0-9_-]", "-");
-    }
 }

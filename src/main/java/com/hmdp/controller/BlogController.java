@@ -2,6 +2,7 @@ package com.hmdp.controller;
 
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.hmdp.annotation.SlidingWindowRateLimit;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
@@ -55,6 +56,9 @@ public class BlogController {
     }
 
     @GetMapping("/hot")
+    @SlidingWindowRateLimit(
+            key = "blog:hot", windowSeconds = 1,
+            globalLimit = 300, ipLimit = 30)
     public Result queryHotBlog(@RequestParam(value = "current", defaultValue = "1") Integer current) {
         return blogService.queryHotBlog(current);
     }

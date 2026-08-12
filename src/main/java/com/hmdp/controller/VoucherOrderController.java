@@ -1,6 +1,7 @@
 package com.hmdp.controller;
 
 
+import com.hmdp.annotation.SlidingWindowRateLimit;
 import com.hmdp.dto.Result;
 import com.hmdp.service.IVoucherOrderService;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,6 +29,9 @@ public class VoucherOrderController {
 
 
     @PostMapping("seckill/{id}")
+    @SlidingWindowRateLimit(
+            key = "voucher-order:seckill", windowSeconds = 1,
+            globalLimit = 500, ipLimit = 50, userLimit = 10)
     public Result seckillVoucher(@PathVariable("id") Long voucherId) {
 
         return voucherOrderService.seckillVoucher(voucherId);

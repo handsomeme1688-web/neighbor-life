@@ -45,6 +45,10 @@ logging:
     com.hmdp: debug
 app:
   instance-id: ${APP_INSTANCE_ID:1}
+  cache:
+    shop-local-max-size: ${SHOP_LOCAL_CACHE_MAX_SIZE:1000}
+    shop-local-ttl-seconds: ${SHOP_LOCAL_CACHE_TTL_SECONDS:60}
+    invalidation-delay-ms: ${CACHE_INVALIDATION_DELAY_MS:500}
   order:
     close-timeout-minutes: ${ORDER_CLOSE_TIMEOUT_MINUTES:15}
     close-scan-delay-ms: ${ORDER_CLOSE_SCAN_DELAY_MS:30000}

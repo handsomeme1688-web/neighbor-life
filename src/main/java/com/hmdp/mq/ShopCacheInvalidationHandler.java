@@ -1,5 +1,7 @@
 package com.hmdp.mq;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.hmdp.entity.Shop;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -25,11 +27,17 @@ public class ShopCacheInvalidationHandler {
     @Resource
     private KafkaTemplate<String, String> kafkaTemplate;
 
+    @Resource
+    private Cache<Long, Shop> shopLocalCache;
+
     @Value("${app.kafka.shop-cache-invalidation-topic}")
     private String invalidationTopic;
 
     @Value("${app.kafka.send-timeout-seconds:5}")
     private long sendTimeoutSeconds;
+
+    @Value("${app.cache.invalidation-delay-ms:500}")
+    private long invalidationDelayMs;
 
     public void invalidateAfterCommit(Long shopId) {
         try {
@@ -54,11 +62,22 @@ public class ShopCacheInvalidationHandler {
     )
     public void consumeInvalidation(String shopIdText) {
         Long shopId = Long.valueOf(shopIdText);
+        delaySecondInvalidation();
         deleteCache(shopId);
         log.info("商铺缓存失效完成, shopId={}", shopId);
     }
 
     private void deleteCache(Long shopId) {
+        shopLocalCache.invalidate(shopId);
         stringRedisTemplate.delete(CACHE_SHOP_KEY + shopId);
+    }
+
+    private void delaySecondInvalidation() {
+        try {
+            Thread.sleep(invalidationDelayMs);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("缓存延迟失效任务被中断", e);
+        }
     }
 }

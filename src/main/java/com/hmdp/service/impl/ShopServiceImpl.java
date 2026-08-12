@@ -2,6 +2,7 @@ package com.hmdp.service.impl;
 
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.github.benmanes.caffeine.cache.Cache;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
@@ -49,8 +50,18 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     @Resource
     private ShopCacheInvalidationHandler shopCacheInvalidationHandler;
 
+    @Resource
+    private Cache<Long, Shop> shopLocalCache;
+
     @Override
     public Result queryById(Long id) {
+        if (id == null) {
+            return Result.fail("店铺编号不能为空");
+        }
+        Shop localShop = shopLocalCache.getIfPresent(id);
+        if (localShop != null) {
+            return Result.ok(localShop);
+        }
         // 缓存穿透
        // Shop shop = queryWithPassThrough(id);
 //       Shop shop = cacheClient.queryWithPassThrough(CACHE_SHOP_KEY, id, Shop.class,
@@ -65,6 +76,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         if (shop == null) {
             return Result.fail("店铺不存在");
         }
+        shopLocalCache.put(id, shop);
         // 7. 返回
         return Result.ok(shop);
     }

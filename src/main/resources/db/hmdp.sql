@@ -1273,9 +1273,12 @@ CREATE TABLE `tb_voucher_order`  (
   `pay_time` timestamp NULL DEFAULT NULL COMMENT '支付时间',
   `use_time` timestamp NULL DEFAULT NULL COMMENT '核销时间',
   `refund_time` timestamp NULL DEFAULT NULL COMMENT '退款时间',
+  `cancel_time` timestamp NULL DEFAULT NULL COMMENT '取消时间',
+  `stock_compensated` tinyint(1) NOT NULL DEFAULT 0 COMMENT 'Redis库存是否已补偿 0否 1是',
   `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `uk_user_voucher` (`user_id`, `voucher_id`) USING BTREE
+  UNIQUE KEY `uk_user_voucher` (`user_id`, `voucher_id`) USING BTREE,
+  KEY `idx_status_create_time` (`status`, `create_time`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Compact;
 
 -- ----------------------------

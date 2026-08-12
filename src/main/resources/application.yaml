@@ -45,6 +45,10 @@ logging:
     com.hmdp: debug
 app:
   instance-id: ${APP_INSTANCE_ID:1}
+  order:
+    close-timeout-minutes: ${ORDER_CLOSE_TIMEOUT_MINUTES:15}
+    close-scan-delay-ms: ${ORDER_CLOSE_SCAN_DELAY_MS:30000}
+    close-batch-size: ${ORDER_CLOSE_BATCH_SIZE:100}
   kafka:
     voucher-order-topic: hmdp.voucher-order.created
     voucher-order-dlt-topic: hmdp.voucher-order.created.DLT

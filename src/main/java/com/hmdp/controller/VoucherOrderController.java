@@ -5,6 +5,7 @@ import com.hmdp.dto.Result;
 import com.hmdp.service.IVoucherOrderService;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -30,5 +31,19 @@ public class VoucherOrderController {
     public Result seckillVoucher(@PathVariable("id") Long voucherId) {
 
         return voucherOrderService.seckillVoucher(voucherId);
+    }
+
+    @GetMapping("/{id}")
+    public Result queryOrder(@PathVariable("id") Long orderId) {
+        return voucherOrderService.queryOrder(orderId);
+    }
+
+    /**
+     * Demo payment endpoint. It only verifies the order state transition and
+     * does not connect to a real payment provider.
+     */
+    @PostMapping("/{id}/pay")
+    public Result payOrder(@PathVariable("id") Long orderId) {
+        return voucherOrderService.payOrder(orderId);
     }
 }

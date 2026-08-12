@@ -73,6 +73,17 @@ public class VoucherOrder implements Serializable {
     private LocalDateTime refundTime;
 
     /**
+     * Unpaid-order cancellation time.
+     */
+    private LocalDateTime cancelTime;
+
+    /**
+     * Whether the canceled order has restored its reserved Redis stock.
+     * 0 means pending, 1 means completed.
+     */
+    private Integer stockCompensated;
+
+    /**
      * 更新时间
      */
     private LocalDateTime updateTime;

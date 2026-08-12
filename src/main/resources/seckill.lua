@@ -24,11 +24,11 @@ end
 if (now > tonumber(endTime)) then
     return 4
 end
-if (tonumber(stock) <= 0) then
-    return 1
-end
 if (redis.call('sismember', orderKey, userId) == 1) then
     return 2
+end
+if (tonumber(stock) <= 0) then
+    return 1
 end
 
 redis.call('incrby', stockKey, -1)

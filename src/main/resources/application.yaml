@@ -52,6 +52,8 @@ app:
   kafka:
     voucher-order-topic: hmdp.voucher-order.created
     voucher-order-dlt-topic: hmdp.voucher-order.created.DLT
+    shop-cache-invalidation-topic: hmdp.shop.cache-invalidation
+    shop-cache-invalidation-dlt-topic: hmdp.shop.cache-invalidation.DLT
     send-timeout-seconds: 5
     retry-interval-ms: 1000
     retry-count: 2

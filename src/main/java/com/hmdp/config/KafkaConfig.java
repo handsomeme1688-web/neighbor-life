@@ -34,6 +34,20 @@ public class KafkaConfig {
     }
 
     @Bean
+    public NewTopic shopCacheInvalidationTopic(
+            @Value("${app.kafka.shop-cache-invalidation-topic}") String topic) {
+        return TopicBuilder.name(topic).partitions(3).replicas(1).build();
+    }
+
+    @Bean
+    public NewTopic shopCacheInvalidationDeadLetterTopic(
+            @Value("${app.kafka.shop-cache-invalidation-dlt-topic}") String topic) {
+        return TopicBuilder.name(topic).partitions(3).replicas(1)
+                .config(TopicConfig.RETENTION_MS_CONFIG, Long.toString(7L * 24 * 60 * 60 * 1000))
+                .build();
+    }
+
+    @Bean
     public ConcurrentKafkaListenerContainerFactory<Object, Object> kafkaListenerContainerFactory(
             ConcurrentKafkaListenerContainerFactoryConfigurer configurer,
             ConsumerFactory<Object, Object> consumerFactory,
@@ -64,6 +78,29 @@ public class KafkaConfig {
         ConcurrentKafkaListenerContainerFactory<Object, Object> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
         configurer.configure(factory, consumerFactory);
+        return factory;
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<Object, Object> shopCacheKafkaListenerContainerFactory(
+            ConcurrentKafkaListenerContainerFactoryConfigurer configurer,
+            ConsumerFactory<Object, Object> consumerFactory,
+            KafkaTemplate<Object, Object> kafkaTemplate,
+            @Value("${app.kafka.shop-cache-invalidation-dlt-topic}") String deadLetterTopic,
+            @Value("${app.kafka.retry-interval-ms:1000}") long retryInterval,
+            @Value("${app.kafka.retry-count:2}") long retryCount) {
+        ConcurrentKafkaListenerContainerFactory<Object, Object> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        configurer.configure(factory, consumerFactory);
+        DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
+                kafkaTemplate,
+                (ConsumerRecord<?, ?> record, Exception exception) ->
+                        new TopicPartition(deadLetterTopic, record.partition())
+        );
+        factory.setErrorHandler(new SeekToCurrentErrorHandler(
+                recoverer,
+                new FixedBackOff(retryInterval, retryCount)
+        ));
         return factory;
     }
 }

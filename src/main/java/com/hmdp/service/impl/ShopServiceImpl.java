@@ -1,21 +1,15 @@
 package com.hmdp.service.impl;
 
-import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.json.JSONObject;
-import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
+import com.hmdp.mq.ShopCacheInvalidationHandler;
 import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.CacheClient;
-import com.hmdp.utils.RedisConstants;
-import com.hmdp.utils.RedisData;
 import com.hmdp.utils.SystemConstants;
-import org.apache.tomcat.util.buf.StringUtils;
 import org.springframework.data.geo.Circle;
 import org.springframework.data.geo.Distance;
 import org.springframework.data.geo.GeoResult;
@@ -25,14 +19,12 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.domain.geo.GeoReference;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import javax.annotation.Resource;
-import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 import static com.hmdp.utils.RedisConstants.*;
 
@@ -54,6 +46,9 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     @Resource
     private CacheClient cacheClient;
 
+    @Resource
+    private ShopCacheInvalidationHandler shopCacheInvalidationHandler;
+
     @Override
     public Result queryById(Long id) {
         // 缓存穿透
@@ -73,9 +68,6 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         // 7. 返回
         return Result.ok(shop);
     }
-
-    private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
-
 
 //    public Shop queryWithLogicalExpire(Long id) { // 封装缓存穿透的代码
 //        // 1. 从redis查询商铺缓存
@@ -256,9 +248,17 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             return Result.fail("店铺id不能为空");
         }
         // 1. 更新数据库
-        updateById(shop);
-        // 2. 删除缓存
-        stringRedisTemplate.delete(CACHE_SHOP_KEY + shop.getId());
+        boolean updated = updateById(shop);
+        if (!updated) {
+            return Result.fail("店铺不存在");
+        }
+        // Delete only after commit, so a rollback cannot leave stale cache.
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                shopCacheInvalidationHandler.invalidateAfterCommit(id);
+            }
+        });
         return Result.ok();
     }
 

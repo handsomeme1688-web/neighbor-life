@@ -1,33 +1,42 @@
 package com.hmdp.utils;
 
-import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.util.StrUtil;
-import com.hmdp.dto.UserDTO;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hmdp.dto.Result;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
+import java.io.IOException;
 
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-
-import static com.hmdp.utils.RedisConstants.LOGIN_USER_KEY;
-
+/**
+ * Requires a valid authenticated session for protected requests.
+ *
+ * @author NeighborLife
+ */
 public class LoginInterceptor implements HandlerInterceptor {
 
-    @Override // 进入controller之前，登录校验
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        // TODO 判断是否需要去拦截(ThreadLocal中是否有用户)
+    private final ObjectMapper objectMapper;
+
+    public LoginInterceptor(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
+            throws IOException {
+        String path = request.getRequestURI();
+        boolean publicRead = "GET".equals(request.getMethod()) && (path.startsWith("/shop/") || path.startsWith("/blogs/")
+                || path.startsWith("/shop-type") || path.startsWith("/voucher/") || path.equals("/blog/hot")
+                || path.startsWith("/actuator/health") || path.startsWith("/v3/api-docs") || path.startsWith("/swagger-ui") || path.startsWith("/webjars/"));
+        boolean publicPost = "POST".equals(request.getMethod()) && (path.equals("/user/code")
+                || path.equals("/user/login") || path.equals("/payments/wechat/notify"));
+        if (publicRead || publicPost) { return true; }
         if (UserHolder.getUser() == null) {
-            // 没有,需要拦截
-            response.setStatus(401);
-            // 拦截
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json;charset=UTF-8");
+            objectMapper.writeValue(response.getWriter(), Result.fail("UNAUTHENTICATED", "请先登录"));
             return false;
         }
-        // 有用户，则放行
         return true;
     }
 }

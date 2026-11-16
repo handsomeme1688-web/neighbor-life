@@ -19,6 +19,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * SlidingWindowRateLimitAspect component.
+ *
+ * @author NeighborLife
+ */
 @Aspect
 @Component
 public class SlidingWindowRateLimitAspect {

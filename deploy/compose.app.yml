@@ -1,0 +1,21 @@
+services:
+  neighbor-life:
+    build: ..
+    image: neighbor-life:${APP_IMAGE_TAG:-local}
+    restart: unless-stopped
+    env_file: application.env
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    volumes:
+      - uploads:/data/uploads
+      - ${APPLICATION_KEYS_DIRECTORY:?Set APPLICATION_KEYS_DIRECTORY}:/run/keys:ro
+    ports:
+      - '127.0.0.1:8081:8081'
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    deploy:
+      resources:
+        limits: {memory: 1G, cpus: '2'}
+volumes:
+  uploads:

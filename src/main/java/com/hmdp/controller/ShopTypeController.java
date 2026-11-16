@@ -1,6 +1,5 @@
 package com.hmdp.controller;
 
-
 import com.hmdp.dto.Result;
 import com.hmdp.entity.ShopType;
 import com.hmdp.service.IShopTypeService;

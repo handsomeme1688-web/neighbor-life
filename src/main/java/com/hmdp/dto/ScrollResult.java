@@ -4,6 +4,11 @@ import lombok.Data;
 
 import java.util.List;
 
+/**
+ * ScrollResult component.
+ *
+ * @author NeighborLife
+ */
 @Data
 public class ScrollResult {
     private List<?> list;

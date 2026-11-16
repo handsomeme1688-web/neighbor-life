@@ -3,7 +3,7 @@ package com.hmdp.utils;
 /**
  * @author 虎哥
  */
-public abstract class RegexPatterns {
+public final class RegexPatterns {
     /**
      * 手机号正则
      */

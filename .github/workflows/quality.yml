@@ -1,0 +1,56 @@
+name: Java quality and reliability
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: local-ci-password
+          MYSQL_DATABASE: neighbor_life_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -plocal-ci-password"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: neighbor_life_test
+      MYSQL_URL: jdbc:mysql://127.0.0.1:3306/neighbor_life_test?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      MYSQL_USERNAME: root
+      MYSQL_PASSWORD: local-ci-password
+      RUN_MYSQL_INTEGRATION: 'true'
+      LOGGING_LEVEL_COM_HMDP: INFO
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+          cache: maven
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install regression dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server
+          python -m pip install 'redis>=5,<6' 'pymysql>=1.1,<2'
+      - name: Run transaction tests and Alibaba P3C gate
+        run: mvn -B -ntp -Pquality verify
+      - name: Run isolated Redis Lua regressions
+        run: python scripts/verify_lua.py
+      - name: Run isolated Redis Sentinel failover
+        run: python scripts/verify_redis_failover.py

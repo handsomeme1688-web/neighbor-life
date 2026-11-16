@@ -5,6 +5,11 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+/**
+ * NeighborLifeApplication component.
+ *
+ * @author NeighborLife
+ */
 @MapperScan("com.hmdp.mapper")
 @SpringBootApplication
 @EnableScheduling

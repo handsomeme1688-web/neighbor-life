@@ -53,7 +53,7 @@ public class Blog implements Serializable {
     /**
      * 是否点赞过了
      */
-    @TableField(exist = false) // isLike不是数据库的字段
+    @TableField(exist = false)
     private Boolean isLike;
 
     /**
@@ -90,6 +90,5 @@ public class Blog implements Serializable {
      * 更新时间
      */
     private LocalDateTime updateTime;
-
 
 }

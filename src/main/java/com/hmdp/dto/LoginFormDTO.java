@@ -5,6 +5,11 @@ import lombok.Data;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Pattern;
 
+/**
+ * LoginFormDTO component.
+ *
+ * @author NeighborLife
+ */
 @Data
 public class LoginFormDTO {
     @NotBlank(message = "手机号不能为空")

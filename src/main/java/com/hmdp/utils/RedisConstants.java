@@ -1,8 +1,19 @@
 package com.hmdp.utils;
 
+/**
+ * RedisConstants component.
+ *
+ * @author NeighborLife
+ */
 public class RedisConstants {
-    public static final String LOGIN_CODE_KEY = "login:code:"; // ctrl + shift + u 全大写
-    public static final Long LOGIN_CODE_TTL = 2L; // 意思是2分钟
+    /**
+     * ctrl + shift + u 全大写
+     */
+    public static final String LOGIN_CODE_KEY = "login:code:";
+    /**
+     * 意思是2分钟
+     */
+    public static final Long LOGIN_CODE_TTL = 2L;
     public static final String LOGIN_USER_KEY = "login:token:";
     public static final Long LOGIN_USER_TTL = 30L;
 

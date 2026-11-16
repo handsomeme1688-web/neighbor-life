@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: neighbor-life
+spec:
+  selector: {app: neighbor-life}
+  ports:
+    - {name: http, port: 8081, targetPort: http}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: neighbor-life-uploads
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests: {storage: 10Gi}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: neighbor-life
+spec:
+  serviceName: neighbor-life
+  replicas: 2
+  selector:
+    matchLabels: {app: neighbor-life}
+  template:
+    metadata:
+      labels: {app: neighbor-life}
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8081'
+        prometheus.io/path: /actuator/prometheus
+    spec:
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: app
+          image: neighbor-life:RELEASE_TAG
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 8081}
+          envFrom:
+            - secretRef: {name: neighbor-life-runtime}
+          env:
+            - {name: SPRING_PROFILES_ACTIVE, value: prod}
+            - name: APP_INSTANCE_ID
+              valueFrom:
+                fieldRef: {fieldPath: metadata.name}
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: '2', memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          startupProbe:
+            httpGet: {path: /actuator/health/liveness, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /actuator/health/readiness, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /actuator/health/liveness, port: http}
+            periodSeconds: 15
+          volumeMounts:
+            - {name: uploads, mountPath: /data/uploads}
+            - {name: temporary, mountPath: /tmp}
+            - {name: keys, mountPath: /run/keys, readOnly: true}
+      volumes:
+        - name: uploads
+          persistentVolumeClaim: {claimName: neighbor-life-uploads}
+        - name: temporary
+          emptyDir: {sizeLimit: 128Mi}
+        - name: keys
+          secret:
+            secretName: neighbor-life-certificates
+            defaultMode: 0440
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: neighbor-life
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: neighbor-life}

@@ -4,31 +4,23 @@ import cn.hutool.json.JSONUtil;
 import com.hmdp.service.IVoucherOrderService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
-import java.util.Collections;
 
+/**
+ * VoucherOrderKafkaConsumer component.
+ *
+ * @author NeighborLife
+ */
 @Slf4j
 @Component
 public class VoucherOrderKafkaConsumer {
 
-    private static final DefaultRedisScript<Long> ROLLBACK_SCRIPT;
-
-    static {
-        ROLLBACK_SCRIPT = new DefaultRedisScript<>();
-        ROLLBACK_SCRIPT.setLocation(new ClassPathResource("seckill_rollback.lua"));
-        ROLLBACK_SCRIPT.setResultType(Long.class);
-    }
-
     @Resource
     private IVoucherOrderService voucherOrderService;
-
     @Resource
-    private StringRedisTemplate stringRedisTemplate;
+    private com.hmdp.ops.MessageQuarantineService quarantineService;
 
     @KafkaListener(topics = "${app.kafka.voucher-order-topic}")
     public void createOrder(String payload) {
@@ -48,22 +40,20 @@ public class VoucherOrderKafkaConsumer {
             containerFactory = "compensationKafkaListenerContainerFactory"
     )
     public void compensateDeadLetter(String payload) {
-        VoucherOrderEvent event = JSONUtil.toBean(payload, VoucherOrderEvent.class);
-        boolean orderExists = voucherOrderService.query()
-                .eq("user_id", event.getUserId())
-                .eq("voucher_id", event.getVoucherId())
-                .count() > 0;
-        if (orderExists) {
+        VoucherOrderEvent event;
+        try {
+            event = JSONUtil.toBean(payload, VoucherOrderEvent.class);
+            event.toOrder();
+        } catch (RuntimeException invalid) {
+            quarantineService.quarantine(payload);
+            log.error("无效订单消息已隔离，等待管理端处理");
+            return;
+        }
+        if (!voucherOrderService.rejectFailedOrder(event.toOrder())) {
             log.warn("死信消息对应订单已存在，跳过库存补偿, orderId={}", event.getOrderId());
             return;
         }
-        Long compensated = stringRedisTemplate.execute(
-                ROLLBACK_SCRIPT,
-                Collections.emptyList(),
-                event.getVoucherId().toString(),
-                event.getUserId().toString()
-        );
-        log.error("订单进入死信队列，Redis 预扣已补偿, orderId={}, compensated={}",
-                event.getOrderId(), compensated);
+        voucherOrderService.compensateFailedOrder(event.toOrder());
+        log.warn("订单进入死信队列，Redis预扣已补偿, orderId={}", event.getOrderId());
     }
 }

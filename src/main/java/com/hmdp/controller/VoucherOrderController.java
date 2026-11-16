@@ -1,6 +1,5 @@
 package com.hmdp.controller;
 
-
 import com.hmdp.annotation.SlidingWindowRateLimit;
 import com.hmdp.dto.Result;
 import com.hmdp.service.IVoucherOrderService;
@@ -13,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import javax.annotation.Resource;
 import javax.validation.constraints.Positive;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.beans.factory.annotation.Value;
 
 /**
  * <p>
@@ -30,6 +30,8 @@ public class VoucherOrderController {
     @Resource
     private IVoucherOrderService voucherOrderService;
 
+    @Value("${app.order.demo-payment-enabled:false}")
+    private boolean demoPaymentEnabled;
 
     @PostMapping("seckill/{id}")
     @SlidingWindowRateLimit(
@@ -39,6 +41,13 @@ public class VoucherOrderController {
             @PathVariable("id") @Positive(message = "优惠券编号必须大于0") Long voucherId) {
 
         return voucherOrderService.seckillVoucher(voucherId);
+    }
+
+    @GetMapping("/my")
+    public Result wallet(@org.springframework.web.bind.annotation.RequestParam(value = "beforeId", defaultValue = "9223372036854775807")
+            @Positive Long beforeId) {
+        return Result.ok(voucherOrderService.query().eq("user_id", com.hmdp.utils.UserHolder.getUser().getId())
+                .lt("id", beforeId).orderByDesc("id").last("LIMIT 20").list());
     }
 
     @GetMapping("/{id}")
@@ -54,6 +63,9 @@ public class VoucherOrderController {
     @PostMapping("/{id}/pay")
     public Result payOrder(
             @PathVariable("id") @Positive(message = "订单编号必须大于0") Long orderId) {
+        if (!demoPaymentEnabled) {
+            return Result.fail("DEMO_PAYMENT_DISABLED", "演示支付功能已关闭");
+        }
         return voucherOrderService.payOrder(orderId);
     }
 }

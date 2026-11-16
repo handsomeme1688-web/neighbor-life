@@ -1,7 +1,6 @@
 package com.hmdp.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
@@ -17,13 +16,11 @@ import com.hmdp.service.IFollowService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -43,6 +40,9 @@ import static com.hmdp.utils.RedisConstants.FEED_KEY;
  */
 @Service
 public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IBlogService {
+    private static final String LOCK_BLOG_SQL = "SELECT id FROM tb_blog WHERE id=? FOR UPDATE";
+    private static final String SHOP_EXISTS_SQL = "SELECT COUNT(*) FROM tb_shop WHERE id=?";
+
 
     @Resource
     private IUserService userService;
@@ -50,9 +50,10 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
-
     @Resource
     private IFollowService followService;
+    @Resource
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     @Override
     public Result queryBlogById(Long id) {
@@ -77,10 +78,9 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         }
         Long userId = user.getId();
         // 2. 判断当前登录用户是否已经点赞
-        Double score = stringRedisTemplate.opsForZSet().score(BLOG_LIKED_KEY + blog.getId(), userId.toString());
-        blog.setIsLike(score != null);
+        blog.setIsLike(jdbc.queryForObject("SELECT COUNT(*) FROM tb_blog_like WHERE blog_id=? AND user_id=?",
+                Long.class, blog.getId(), userId) > 0);
     }
-
 
     @Override
     public Result queryHotBlog(Integer current) {
@@ -99,77 +99,62 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
     public Result likeBlog(Long id) {
+        jdbc.queryForList(LOCK_BLOG_SQL, id);
+        boolean liked = jdbc.queryForObject("SELECT COUNT(*) FROM tb_blog_like WHERE blog_id=? AND user_id=?",
+                Long.class, id, UserHolder.getUser().getId()) > 0;
+        return setLike(id, !liked);
+    }
 
-        // 1. 获取登录用户
-        Long userId = UserHolder.getUser().getId();
-        // 2. 判断当前登录用户是否已经点赞
-        Double score = stringRedisTemplate.opsForZSet().score(BLOG_LIKED_KEY + id, userId.toString());
-        if (score == null) {
-            // 3. 如果未点赞，则进行点赞
-            // 3.1 数据库点赞数 + 1
-            boolean isSuccess = update()
-                    .setSql("liked = liked + 1")
-                    .eq("id", id).update();
-            // 3.2 保存用户到redis的set集合
-            if (isSuccess) {
-                stringRedisTemplate.opsForZSet().add(BLOG_LIKED_KEY + id, userId.toString(), System.currentTimeMillis());
-            }
-        }else {
-            // 4. 如果已点赞，取消点赞
-            // 4.1 数据库点赞数 -1
-            boolean isSuccess = update()
-                    .setSql("liked = liked - 1")
-                    .eq("id", id).update();
-            // 4.2 把用户从redis的set集合里移除
-            if (isSuccess) {
-                stringRedisTemplate.opsForZSet().remove(BLOG_LIKED_KEY + id, userId.toString());
-            }
+    @Override
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public Result setLike(Long id, Boolean liked) {
+        if (jdbc.queryForList(LOCK_BLOG_SQL, id).isEmpty()) {
+            return Result.fail("笔记不存在");
         }
+        Long userId = UserHolder.getUser().getId();
+        if (Boolean.TRUE.equals(liked)) {
+            jdbc.update("INSERT IGNORE INTO tb_blog_like(blog_id,user_id) VALUES (?,?)", id, userId);
+        } else {
+            jdbc.update("DELETE FROM tb_blog_like WHERE blog_id=? AND user_id=?", id, userId);
+        }
+        jdbc.update("UPDATE tb_blog SET liked=(SELECT COUNT(*) FROM tb_blog_like WHERE blog_id=?) WHERE id=?", id, id);
         return Result.ok();
     }
 
     @Override
     public Result queryBlogLikes(Long id) {
-        // 1. 查询top5的点赞用户 zrange key 0 4
-        Set<String> top5 = stringRedisTemplate.opsForZSet().range(BLOG_LIKED_KEY + id, 0, 4);
-        if (top5 == null || top5.isEmpty()) {
-            return Result.ok(Collections.emptyList());
-        }
-        // 2. 查到的是sortedset里的用户id和分数，解析出其中的用户id
-                // 转成userId
-        List<Long> ids = top5.stream().map(Long::valueOf).collect(Collectors.toList());
+        List<Long> ids = jdbc.queryForList("SELECT user_id FROM tb_blog_like WHERE blog_id=? "
+                + "ORDER BY create_time,user_id LIMIT 5", Long.class, id);
+        if (ids.isEmpty()) { return Result.ok(Collections.emptyList()); }
         String idStr = StrUtil.join(",", ids);
         // 3. 根据用户id查询用户
-        List<UserDTO> userDTOS = userService.query()
+        List<UserDTO> userDtos = userService.query()
                 .in("id", ids).last("ORDER BY FIELD(id,"+ idStr +")").list()
                 .stream()
                 .map(user -> BeanUtil.copyProperties(user, UserDTO.class))
                 .collect(Collectors.toList());
 
-        return Result.ok(userDTOS);
+        return Result.ok(userDtos);
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
     public Result saveBlog(Blog blog) {
         // 获取登录用户
         UserDTO user = UserHolder.getUser();
-        blog.setUserId(user.getId());
+        if (jdbc.queryForObject(SHOP_EXISTS_SQL, Long.class, blog.getShopId()) == 0) {
+            return Result.fail("商铺不存在");
+        }
+        blog.setId(null).setLiked(0).setComments(0).setUserId(user.getId());
         // 保存探店博文
         boolean isSuccess = save(blog);
         if (!isSuccess) {
             return Result.fail("新增笔记失败！");
         }
-        // 查询笔记作者的粉丝 select * from tb_follow where follow_user_id = ?
-        List<Follow> follows = followService.query().eq("follow_user_id", user.getId()).list();
-        // 推送笔记id给所有粉丝
-        for (Follow follow : follows) {
-            // 获取粉丝id
-            Long userId = follow.getUserId();
-            // 推送
-            String key = FEED_KEY + userId;
-            stringRedisTemplate.opsForZSet().add(key, blog.getId().toString(), System.currentTimeMillis());
-        }
+        jdbc.update("INSERT INTO tb_feed_delivery(blog_id,author_id,published_ms) VALUES (?,?,?)",
+                blog.getId(), user.getId(), System.currentTimeMillis());
         // 返回id
         return Result.ok(blog.getId());
     }
@@ -206,7 +191,8 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         // 根据id查询blog
         String idStr = StrUtil.join(",", ids);
         List<Blog> blogs = query()
-                .in("id", ids).last("ORDER BY FIELD(id,"+ idStr +")").list(); // 基于mysql的in 来查, 不能保证顺序
+                // 基于mysql的in 来查, 不能保证顺序
+                .in("id", ids).last("ORDER BY FIELD(id,"+ idStr +")").list();
         for (Blog blog : blogs) {
             // 5. 查询blog有关的用户
             queryBlogUser(blog);
@@ -217,7 +203,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         // 封装并返回
         ScrollResult r = new ScrollResult();
         r.setList(blogs);
-        r.setOffset(os);
+        r.setOffset(minTime == max ? offset + os : os);
         r.setMinTime(minTime);
 
         return Result.ok(r);
@@ -226,7 +212,9 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     private void queryBlogUser(Blog blog) {
         Long userId = blog.getUserId();
         User user = userService.getById(userId);
-        blog.setName(user.getNickName());
-        blog.setIcon(user.getIcon());
+        if (user != null) {
+            blog.setName(user.getNickName());
+            blog.setIcon(user.getIcon());
+        }
     }
 }

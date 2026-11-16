@@ -11,6 +11,14 @@ import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.connection.stream.ByteRecord;
+import org.springframework.data.redis.connection.stream.PendingMessage;
+import org.springframework.data.redis.connection.stream.PendingMessages;
+import org.springframework.data.redis.connection.stream.StreamRecords;
+import org.springframework.data.domain.Range;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
@@ -21,8 +29,10 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -30,6 +40,7 @@ import java.util.concurrent.TimeUnit;
  *
  * At-least-once delivery is intentional. Kafka acknowledgement happens before
  * XACK; duplicates are handled by the consumer and the database unique index.
+ * @author NeighborLife
  */
 @Slf4j
 @Component
@@ -37,6 +48,14 @@ public class VoucherOrderOutboxRelay {
 
     private static final String STREAM = "stream.orders";
     private static final String GROUP = "kafka-relay";
+    private static final String GROUP_EXISTS_ERROR = "BUSYGROUP";
+    private static final int BATCH_SIZE = 10;
+    private static final DefaultRedisScript<Long> ACK_SCRIPT = new DefaultRedisScript<>();
+
+    static {
+        ACK_SCRIPT.setLocation(new ClassPathResource("outbox_ack.lua"));
+        ACK_SCRIPT.setResultType(Long.class);
+    }
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
@@ -52,60 +71,50 @@ public class VoucherOrderOutboxRelay {
 
     @Value("relay-${app.instance-id:1}")
     private String consumerName;
-    private final ExecutorService relayExecutor = Executors.newSingleThreadExecutor(r -> {
-        Thread thread = new Thread(r, "voucher-order-kafka-relay");
-        thread.setDaemon(true);
-        return thread;
-    });
+    @Value("${app.kafka.relay-claim-idle-ms:60000}")
+    private long claimIdleMs;
+
+    @Resource
+    private ExecutorService orderRelayExecutor;
     private volatile boolean running = true;
 
     @PostConstruct
     public void start() {
         createConsumerGroupIfNecessary();
-        relayExecutor.submit(this::relayLoop);
+        orderRelayExecutor.execute(this::relayLoop);
     }
 
     @PreDestroy
     public void stop() {
         running = false;
-        relayExecutor.shutdownNow();
+        orderRelayExecutor.shutdownNow();
     }
 
     private void createConsumerGroupIfNecessary() {
-        RecordId bootstrapId = null;
         try {
-            // XGROUP cannot create a group for a missing stream in this Spring
-            // Data version, so create and immediately remove a bootstrap event.
-            if (Boolean.FALSE.equals(stringRedisTemplate.hasKey(STREAM))) {
-                bootstrapId = stringRedisTemplate.opsForStream()
-                        .add(STREAM, Collections.singletonMap("_bootstrap", "1"));
-            }
-            stringRedisTemplate.opsForStream().createGroup(STREAM, ReadOffset.from("0-0"), GROUP);
+            stringRedisTemplate.execute((RedisCallback<String>) connection -> connection.xGroupCreate(
+                    STREAM.getBytes(StandardCharsets.UTF_8), GROUP, ReadOffset.from("0-0"), true));
         } catch (DataAccessException e) {
-            if (e.getMessage() == null || !e.getMessage().contains("BUSYGROUP")) {
+            if (e.getMessage() == null || !e.getMessage().contains(GROUP_EXISTS_ERROR)) {
                 throw e;
-            }
-        } finally {
-            if (bootstrapId != null) {
-                stringRedisTemplate.opsForStream().delete(STREAM, bootstrapId);
             }
         }
     }
 
     private void relayLoop() {
-        recoverOwnPendingMessages();
         while (running && !Thread.currentThread().isInterrupted()) {
             try {
+                recoverOwnPendingMessages();
+                recoverAbandonedMessages();
                 List<MapRecord<String, Object, Object>> records = stringRedisTemplate.opsForStream().read(
                         Consumer.from(GROUP, consumerName),
-                        StreamReadOptions.empty().count(10).block(Duration.ofSeconds(2)),
+                        StreamReadOptions.empty().count(BATCH_SIZE).block(Duration.ofSeconds(2)),
                         StreamOffset.create(STREAM, ReadOffset.lastConsumed())
                 );
                 publishAndAcknowledge(records);
             } catch (Exception e) {
                 log.error("Redis Stream 转发 Kafka 失败，将继续重试", e);
                 sleepQuietly(1000);
-                recoverOwnPendingMessages();
             }
         }
     }
@@ -116,7 +125,7 @@ public class VoucherOrderOutboxRelay {
             try {
                 records = stringRedisTemplate.opsForStream().read(
                         Consumer.from(GROUP, consumerName),
-                        StreamReadOptions.empty().count(10),
+                        StreamReadOptions.empty().count(BATCH_SIZE),
                         StreamOffset.create(STREAM, ReadOffset.from("0"))
                 );
             } catch (Exception e) {
@@ -130,6 +139,37 @@ public class VoucherOrderOutboxRelay {
         }
     }
 
+    private void recoverAbandonedMessages() {
+        PendingMessages pending = stringRedisTemplate.opsForStream()
+                .pending(STREAM, GROUP, Range.unbounded(), 100);
+        if (pending == null) {
+            return;
+        }
+        List<RecordId> abandoned = new ArrayList<>(BATCH_SIZE);
+        for (PendingMessage message : pending) {
+            if (message.getElapsedTimeSinceLastDelivery().toMillis() >= claimIdleMs) {
+                abandoned.add(message.getId());
+            }
+        }
+        if (abandoned.isEmpty()) {
+            return;
+        }
+        List<ByteRecord> claimed = stringRedisTemplate.execute((RedisCallback<List<ByteRecord>>) connection ->
+                connection.xClaim(STREAM.getBytes(StandardCharsets.UTF_8), GROUP, consumerName,
+                        Duration.ofMillis(claimIdleMs), abandoned.toArray(new RecordId[abandoned.size()])));
+        if (claimed == null) {
+            return;
+        }
+        List<MapRecord<String, Object, Object>> records = new ArrayList<>(claimed.size());
+        for (ByteRecord record : claimed) {
+            Map<Object, Object> values = new LinkedHashMap<>(record.getValue().size());
+            record.getValue().forEach((key, value) -> values.put(
+                    new String(key, StandardCharsets.UTF_8), new String(value, StandardCharsets.UTF_8)));
+            records.add(StreamRecords.newRecord().in(STREAM).ofMap(values).withId(record.getId()));
+        }
+        publishAndAcknowledge(records);
+    }
+
     private void publishAndAcknowledge(List<MapRecord<String, Object, Object>> records) {
         if (records == null || records.isEmpty()) {
             return;
@@ -139,7 +179,11 @@ public class VoucherOrderOutboxRelay {
             try {
                 kafkaTemplate.send(topic, event.getOrderId().toString(), JSONUtil.toJsonStr(event))
                         .get(sendTimeoutSeconds, TimeUnit.SECONDS);
-                stringRedisTemplate.opsForStream().acknowledge(STREAM, GROUP, record.getId());
+                stringRedisTemplate.execute(ACK_SCRIPT, Collections.singletonList(STREAM),
+                        GROUP, record.getId().getValue());
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("订单转发线程被中断", exception);
             } catch (Exception e) {
                 throw new IllegalStateException("Kafka 未确认订单消息, orderId=" + event.getOrderId(), e);
             }

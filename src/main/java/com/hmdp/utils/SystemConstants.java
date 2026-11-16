@@ -1,5 +1,10 @@
 package com.hmdp.utils;
 
+/**
+ * SystemConstants component.
+ *
+ * @author NeighborLife
+ */
 public class SystemConstants {
     public static final String IMAGE_UPLOAD_DIR = "E:\\nginx\\nginx-1.18.0\\nginx-1.18.0\\html\\hmdp\\imgs\\";
     public static final String USER_NICK_NAME_PREFIX = "user_";

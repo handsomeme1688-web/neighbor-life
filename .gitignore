@@ -35,3 +35,17 @@ build/
 ### Local secrets ###
 .env
 application-local.yaml
+.local-stack/
+uploads/
+
+### Python tooling caches ###
+__pycache__/
+*.py[cod]
+
+# Deployment credentials and database exports
+deploy/application.env
+backups/
+*.pem
+*.key
+*.p12
+*.jks

@@ -1,0 +1,33 @@
+groups:
+  - name: neighbor-reliability
+    rules:
+      - alert: NeighborOrderCompensationBacklog
+        expr: neighbor_orders_compensation_pending > 0
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: '订单库存补偿连续五分钟未清空'}
+      - alert: NeighborRefundBacklog
+        expr: neighbor_refunds_pending > 0
+        for: 15m
+        labels: {severity: critical}
+        annotations: {summary: '退款持续等待渠道处理或重试'}
+      - alert: NeighborCacheDeliveryBacklog
+        expr: neighbor_cache_outbox_pending > 100
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: '缓存失效投递积压'}
+      - alert: NeighborPoisonMessages
+        expr: neighbor_messages_quarantined > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: '异常订单消息需要管理端处理'}
+      - alert: NeighborKafkaConsumerLag
+        expr: sum(kafka_consumergroup_lag{consumergroup='hmdp-voucher-order'}) > 1000
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: '订单 Kafka 消费持续积压'}
+      - alert: NeighborMetricsMissing
+        expr: up{job='neighbor-life'} == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations: {summary: '应用指标采集失败，请检查实例与采集凭据'}

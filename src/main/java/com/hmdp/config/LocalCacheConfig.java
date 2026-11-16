@@ -9,8 +9,18 @@ import org.springframework.context.annotation.Configuration;
 
 import java.util.concurrent.TimeUnit;
 
+/**
+ * LocalCacheConfig component.
+ *
+ * @author NeighborLife
+ */
 @Configuration
 public class LocalCacheConfig {
+    @Bean
+    public Cache<Long, com.hmdp.dto.VoucherDetailDTO> voucherLocalCache() {
+        return Caffeine.newBuilder().maximumSize(2000).expireAfterWrite(60L, TimeUnit.SECONDS).recordStats().build();
+    }
+
 
     @Bean
     public Cache<Long, Shop> shopLocalCache(

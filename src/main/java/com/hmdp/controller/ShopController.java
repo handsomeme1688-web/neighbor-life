@@ -1,9 +1,12 @@
 package com.hmdp.controller;
 
-
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.ShopCreateDTO;
+import com.hmdp.dto.ShopUpdateDTO;
+import cn.hutool.core.bean.BeanUtil;
+import com.hmdp.annotation.AdminOnly;
 import com.hmdp.entity.Shop;
 import com.hmdp.service.IShopService;
 import com.hmdp.utils.SystemConstants;
@@ -48,9 +51,11 @@ public class ShopController {
      * @return 商铺id
      */
     @PostMapping
-    public Result saveShop(@RequestBody Shop shop) {
+    @AdminOnly
+    public Result saveShop(@Valid @RequestBody ShopCreateDTO request) {
+        Shop shop = BeanUtil.copyProperties(request, Shop.class);
         // 写入数据库
-        shopService.save(shop);
+        shopService.createShop(shop);
         // 返回店铺id
         return Result.ok(shop.getId());
     }
@@ -61,7 +66,8 @@ public class ShopController {
      * @return 无
      */
     @PutMapping
-    public Result updateShop(@Valid @RequestBody Shop shop) {
+    public Result updateShop(@Valid @RequestBody ShopUpdateDTO request) {
+        Shop shop = BeanUtil.copyProperties(request, Shop.class);
         // 写入数据库
 
         return shopService.update(shop);
@@ -76,7 +82,7 @@ public class ShopController {
     @GetMapping("/of/type")
     public Result queryShopByType(
             @RequestParam("typeId") @Positive(message = "店铺类型必须大于0") Integer typeId,
-            @RequestParam(value = "current", defaultValue = "1") @Min(value = 1, message = "页码必须大于0") Integer current,
+            @RequestParam(value = "current", defaultValue = "1") @Min(value = 1, message = "页码必须大于0") @javax.validation.constraints.Max(10000) Integer current,
             @RequestParam(value = "x", required = false)Double x,
             @RequestParam(value = "y", required = false)Double y
     ) {
@@ -92,7 +98,7 @@ public class ShopController {
     @GetMapping("/of/name")
     public Result queryShopByName(
             @RequestParam(value = "name", required = false) String name,
-            @RequestParam(value = "current", defaultValue = "1") Integer current
+            @RequestParam(value = "current", defaultValue = "1") @Min(1) @javax.validation.constraints.Max(10000) Integer current
     ) {
         // 根据类型分页查询
         Page<Shop> page = shopService.query()

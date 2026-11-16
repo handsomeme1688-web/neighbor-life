@@ -1,0 +1,57 @@
+server:
+  shutdown: graceful
+  tomcat:
+    threads:
+      max: 200
+    accept-count: 100
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  datasource:
+    url: ${MYSQL_URL}
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
+    hikari:
+      data-source-properties:
+        trustCertificateKeyStoreUrl: ${MYSQL_TRUSTSTORE_URL}
+        trustCertificateKeyStorePassword: ${MYSQL_TRUSTSTORE_PASSWORD}
+        trustCertificateKeyStoreType: PKCS12
+      maximum-pool-size: ${MYSQL_POOL_SIZE:20}
+      connection-timeout: 5000
+  redis:
+    ssl: true
+    sentinel:
+      master: ${REDIS_SENTINEL_MASTER}
+      nodes: ${REDIS_SENTINEL_NODES}
+      password: ${REDIS_SENTINEL_PASSWORD}
+    password: ${REDIS_PASSWORD}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    properties:
+      security.protocol: ${KAFKA_SECURITY_PROTOCOL:SASL_SSL}
+      sasl.mechanism: ${KAFKA_SASL_MECHANISM:SCRAM-SHA-512}
+      sasl.jaas.config: ${KAFKA_SASL_JAAS_CONFIG}
+      ssl.truststore.location: ${KAFKA_TRUSTSTORE_PATH}
+      ssl.truststore.password: ${KAFKA_TRUSTSTORE_PASSWORD}
+app:
+  redis:
+    truststore-path: ${REDIS_TRUSTSTORE_PATH}
+    truststore-password: ${REDIS_TRUSTSTORE_PASSWORD}
+  instance-id: ${APP_INSTANCE_ID}
+  sms:
+    mode: aliyun
+  payment:
+    mode: wechat
+  order:
+    demo-payment-enabled: false
+  kafka:
+    replication-factor: 3
+    min-in-sync-replicas: 2
+logging:
+  level:
+    com.hmdp: info
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

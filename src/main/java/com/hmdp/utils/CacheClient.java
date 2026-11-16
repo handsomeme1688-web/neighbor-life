@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
@@ -24,6 +24,7 @@ import static com.hmdp.utils.RedisConstants.LOCK_SHOP_KEY;
 
 /**
  * Shared Redis cache helper with cache-penetration and hot-key protection.
+ * @author NeighborLife
  */
 @Slf4j
 @Component
@@ -31,7 +32,6 @@ public class CacheClient {
 
     private static final int MISS_RETRY_COUNT = 20;
     private static final long MISS_RETRY_DELAY_MS = 50L;
-    private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(4);
     private static final DefaultRedisScript<Long> UNLOCK_SCRIPT;
 
     static {
@@ -42,6 +42,9 @@ public class CacheClient {
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+
+    @Resource
+    private ExecutorService cacheRebuildExecutor;
 
     public void set(String key, Object value, Long time, TimeUnit unit) {
         stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(value), time, unit);
@@ -111,7 +114,7 @@ public class CacheClient {
     private <R, ID> R loadOnMiss(
             String key, ID id, Class<R> type, Function<ID, R> dbFallback,
             Long time, TimeUnit unit) {
-        String lockKey = LOCK_SHOP_KEY + id;
+        String lockKey = "lock:cache:" + key;
         for (int attempt = 0; attempt < MISS_RETRY_COUNT; attempt++) {
             String lockToken = tryLock(lockKey);
             if (lockToken != null) {
@@ -157,13 +160,14 @@ public class CacheClient {
 
     private <R, ID> void rebuildExpiredValue(
             String key, ID id, Function<ID, R> dbFallback, Long time, TimeUnit unit) {
-        String lockKey = LOCK_SHOP_KEY + id;
+        String lockKey = "lock:cache:" + key;
         String lockToken = tryLock(lockKey);
         if (lockToken == null) {
             return;
         }
 
-        CACHE_REBUILD_EXECUTOR.submit(() -> {
+        try {
+            cacheRebuildExecutor.execute(() -> {
             try {
                 R latest = dbFallback.apply(id);
                 if (latest == null) {
@@ -177,7 +181,11 @@ public class CacheClient {
             } finally {
                 unlock(lockKey, lockToken);
             }
-        });
+            });
+        } catch (RejectedExecutionException exception) {
+            unlock(lockKey, lockToken);
+            log.warn("缓存重建队列已满，等待后续请求重试, key={}", key);
+        }
     }
 
     private <R> R convert(Object data, Class<R> type) {
